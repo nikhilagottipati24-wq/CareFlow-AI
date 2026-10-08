@@ -1,29 +1,15 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
-  :root {
-    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  }
-  
   body {
-    margin: 0;
-    padding: 0;
-    background-color: #f8fafc;
-    color: #0f172a;
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  #root {
-    width: 100%;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-/* Custom scrollbars */
+/* Custom subtle scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -39,12 +25,12 @@
   background: #94a3b8;
 }
 
-/* Pulsing badge animation */
-@keyframes pulse-subtle {
+/* Pulse animation for synthetic mode and active agents */
+@keyframes subtle-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.85; transform: scale(1.02); }
 }
 
-.pulse-subtle {
-  animation: pulse-subtle 3s infinite ease-in-out;
+.animate-subtle-pulse {
+  animation: subtle-pulse 3s infinite ease-in-out;
 }

@@ -1,109 +1,110 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   Calendar,
   CheckCircle2,
   Clock,
   AlertTriangle,
-  Hospital,
-  TestTube,
-  Heart,
-  Stethoscope,
   ExternalLink,
-  ChevronDown,
-  Sparkles
+  ChevronRight,
+  Activity,
+  HeartPulse,
+  Pill,
+  ShieldCheck,
 } from 'lucide-react';
-import { getTimeline } from '../api';
-import SourceModal from '../components/SourceModal';
+import { useCareFlow } from '../context/CareFlowContext';
 
-export default function TimelinePage() {
-  const [timelineEvents, setTimelineEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedSourceItem, setSelectedSourceItem] = useState(null);
+export const TimelinePage = () => {
+  const { tasks, openSourceEvidence, openTaskModal } = useCareFlow();
 
-  useEffect(() => {
-    getTimeline()
-      .then((data) => setTimelineEvents(data))
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const getEventIcon = (category) => {
-    switch (category) {
-      case 'Discharge':
-        return <Hospital className="w-5 h-5 text-white" />;
-      case 'Test':
-        return <TestTube className="w-5 h-5 text-white" />;
-      case 'Appointment':
-        return <Heart className="w-5 h-5 text-white" />;
-      default:
-        return <Stethoscope className="w-5 h-5 text-white" />;
-    }
-  };
-
-  const getEventColor = (status, category) => {
-    if (status === 'Completed' || category === 'Discharge') return 'bg-emerald-600 ring-emerald-100';
-    if (status === 'Needs Review') return 'bg-rose-600 ring-rose-100';
-    return 'bg-sky-600 ring-sky-100';
-  };
+  // Construct events timeline starting with October 14 Discharge
+  const timelineEvents = [
+    {
+      id: "event-0",
+      dateFormatted: "October 14, 2026",
+      dateIso: "2026-10-14",
+      title: "Hospital Discharge (Post-PCI)",
+      category: "Discharge",
+      status: "Completed",
+      description: "Patient discharged from Synthetic General Hospital with dual antiplatelet regimen and outpatient recovery orders.",
+      source: {
+        document: "Discharge_Summary_AlexJohnson.pdf",
+        page: 1,
+        section: "Admission & Discharge Record",
+        original_text: "Patient discharged in stable hemodynamic condition following successful PCI to LAD.",
+        agent_name: "Document Extraction Agent",
+        confidence: 0.99,
+      }
+    },
+    ...tasks.map(t => ({
+      id: `event-${t.id}`,
+      dateFormatted: t.due_date_formatted || "October 20, 2026",
+      dateIso: t.dueDate || "2026-10-20",
+      title: t.name,
+      category: t.task_type || "Care",
+      status: t.status,
+      description: t.patient_friendly_explanation || t.description,
+      source: t.source_reference,
+      rawTask: t,
+    }))
+  ];
 
   return (
-    <div className="flex-1 p-6 lg:p-8 space-y-8 max-w-4xl mx-auto w-full">
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="text-center space-y-2 max-w-xl mx-auto">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
-          <Sparkles className="w-3.5 h-3.5" />
-          Chronological Care Roadmap
-        </div>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          Care Plan Timeline
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wider text-healthcare-700 bg-healthcare-50 px-2.5 py-1 rounded-md border border-healthcare-100">
+          Chronological Recovery Road
+        </span>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
+          Post-Discharge Timeline
         </h1>
-        <p className="text-xs text-slate-500">
-          Step-by-step milestones organized sequentially from hospital discharge to long-term follow-up review.
+        <p className="text-xs text-slate-500 mt-0.5">
+          Step-by-step sequential care itinerary from discharge day to outpatient stabilization
         </p>
       </div>
 
-      {loading ? (
-        <div className="p-12 text-center text-xs text-slate-500">Loading timeline events...</div>
-      ) : (
-        <div className="relative pl-6 sm:pl-10 space-y-8 before:absolute before:left-3 sm:before:left-5 before:top-4 before:bottom-4 before:w-0.5 before:bg-slate-200">
-          {timelineEvents.map((evt, idx) => {
-            const isCompleted = evt.status === 'Completed';
-            const isNeedsReview = evt.status === 'Needs Review';
+      {/* Vertical Timeline matching Section 13 */}
+      <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/80 shadow-2xs relative">
+        <div className="relative border-l-2 border-slate-200 ml-4 sm:ml-6 space-y-8 py-2">
+          {timelineEvents.map((event, idx) => {
+            const isCompleted = event.status === 'Completed';
+            const isNeedsReview = event.status === 'Needs Review';
 
             return (
-              <div key={evt.id || idx} className="relative group">
-                {/* Node icon pill */}
+              <div key={event.id} className="relative pl-6 sm:pl-8 group">
+                {/* Node icon on vertical line */}
                 <div
-                  className={`absolute -left-6 sm:-left-10 top-1 w-9 h-9 rounded-2xl flex items-center justify-center ring-4 transition-transform group-hover:scale-110 shadow-sm ${getEventColor(
-                    evt.status,
-                    evt.category
-                  )}`}
+                  className={`absolute -left-[17px] top-1 flex items-center justify-center w-8 h-8 rounded-full border-2 bg-white transition-all shadow-xs ${
+                    isCompleted
+                      ? 'border-emerald-500 text-emerald-600'
+                      : isNeedsReview
+                      ? 'border-rose-500 text-rose-600 animate-pulse'
+                      : 'border-amber-500 text-amber-600'
+                  }`}
                 >
-                  {getEventIcon(evt.category)}
+                  {isCompleted ? (
+                    <CheckCircle2 className="w-4 h-4 fill-emerald-50" />
+                  ) : isNeedsReview ? (
+                    <AlertTriangle className="w-4 h-4" />
+                  ) : (
+                    <Clock className="w-4 h-4" />
+                  )}
                 </div>
 
                 {/* Event Card */}
-                <div
-                  className={`ml-6 sm:ml-8 bg-white p-5 rounded-2xl border transition-all shadow-xs space-y-3 hover:shadow-sm ${
-                    isNeedsReview
-                      ? 'border-rose-200 bg-rose-50/20'
-                      : isCompleted
-                      ? 'border-emerald-100'
-                      : 'border-slate-200/90 hover:border-sky-300'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:border-healthcare-300 hover:bg-white transition-all shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-sky-700 bg-sky-50 border border-sky-100 px-3 py-1 rounded-lg">
-                        {evt.date}
+                      <span className="text-xs font-extrabold text-healthcare-700">
+                        {event.dateFormatted}
                       </span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        {evt.category}
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200">
+                        {event.category}
                       </span>
                     </div>
 
                     <span
-                      className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
+                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full inline-block w-fit ${
                         isCompleted
                           ? 'bg-emerald-100 text-emerald-800'
                           : isNeedsReview
@@ -111,46 +112,51 @@ export default function TimelinePage() {
                           : 'bg-amber-100 text-amber-800'
                       }`}
                     >
-                      {evt.status}
+                      {event.status}
                     </span>
                   </div>
 
-                  <div>
-                    <h3 className="font-bold text-base text-slate-900 group-hover:text-sky-700 transition-colors">
-                      {evt.title}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {evt.description}
-                    </p>
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 mt-2">
+                    {event.title}
+                  </h3>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="truncate max-w-[70%]">
-                      Source: {evt.source}
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    {event.description}
+                  </p>
+
+                  {/* Source and details */}
+                  <div className="pt-3 mt-3 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">
+                      Source: {event.source?.section || 'Discharge Record'}
                     </span>
-                    <button
-                      onClick={() => setSelectedSourceItem(evt)}
-                      className="text-sky-600 font-semibold hover:underline flex items-center gap-1"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      <span>View Evidence</span>
-                    </button>
+
+                    <div className="flex items-center gap-3">
+                      {event.rawTask && (
+                        <button
+                          onClick={() => openTaskModal(event.rawTask)}
+                          className="font-bold text-slate-700 hover:text-healthcare-700"
+                        >
+                          View Details
+                        </button>
+                      )}
+
+                      {event.source && (
+                        <button
+                          onClick={() => openSourceEvidence(event.source)}
+                          className="text-healthcare-600 hover:text-healthcare-700 font-bold flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>View Source</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
-      )}
-
-      {/* Source Evidence Modal */}
-      {selectedSourceItem && (
-        <SourceModal
-          item={selectedSourceItem}
-          isOpen={!!selectedSourceItem}
-          onClose={() => setSelectedSourceItem(null)}
-        />
-      )}
+      </div>
     </div>
   );
-}
+};

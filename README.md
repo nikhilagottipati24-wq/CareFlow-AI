@@ -1,130 +1,201 @@
 # CareFlow AI – Agentic Hospital Discharge & Follow-up Coordinator
 
-> **Tagline:** Turn complex discharge instructions into a clear, trackable care plan.
+> **"Turn complex discharge instructions into a clear, trackable care plan."**
 
-![Synthetic Data Mode](https://img.shields.io/badge/Mode-Synthetic%20Healthcare%20Data-emerald)
-![Language](https://img.shields.io/badge/Language-English%20Only-blue)
-![Safety](https://img.shields.io/badge/Safety%20Guardrails-Strictly%20Enforced-amber)
+**CareFlow AI** is a post-hospital-discharge coordination platform built for patients, family caregivers, and clinical care coordinators. It transforms dense, unstructured hospital discharge summaries into a structured, trackable care plan with timeline schedules, plain-English patient guidance, source-grounded explainability, and human-in-the-loop clinical review escalations.
 
 ---
 
-## 1. Project Purpose & Core Architecture
+## 🛡️ Important Healthcare Safety Boundaries & Responsible AI
 
-**CareFlow AI** is an AI-powered post-hospital-discharge coordination platform. When a synthetic hospital discharge summary (in PDF or text format) is uploaded, the multi-agent system orchestrates extraction, validation, task generation, plain-English translation, and safety guardrail checks to create an actionable care plan.
+**CareFlow AI is NOT a diagnostic or treatment system.**
 
-### Core Value Proposition
-$$\text{Upload} \longrightarrow \text{Understand} \longrightarrow \text{Organize} \longrightarrow \text{Track} \longrightarrow \text{Review}$$
+The AI agentic system **NEVER**:
+- Diagnoses a patient or predicts diseases.
+- Recommends clinical treatments or remedies.
+- Changes medication dosages or schedules.
+- Tells patients to stop or start prescription medications.
+- Invents missing appointment dates, dosages, or durations.
+- Presents synthetic provider matches as guaranteed or clinical endorsements.
+- Overrides original discharge orders.
+
+The AI system is strictly constrained to:
+- **Extract** information verbatim as written.
+- **Organize** instructions into actionable categories (Medications, Appointments, Tests, Referrals, Care).
+- **Explain** medical instructions in simpler plain English (English only).
+- **Create** actionable tasks and chronological recovery timelines.
+- **Track** completion and adherence milestones.
+- **Identify ambiguity**, missing calendar dates, and incomplete medication durations.
+- **Escalate** clinically sensitive questions and conflicts to the **Human Review Center**.
 
 ---
 
-## 2. Multi-Agent Orchestration Architecture
+## 🤖 Multi-Agent Architecture
 
-Unlike generic chatbots, CareFlow AI coordinates 6 specialized autonomous subagents:
+CareFlow AI employs 6 specialized logical agents coordinated by an orchestration pipeline:
 
-```mermaid
-graph TD
-    Upload[Synthetic Discharge Summary PDF / TXT] --> Ingest[Document Ingestion PyMuPDF]
-    Ingest --> Agent1[Agent 1: Document Extraction Agent]
-    Agent1 --> Agent2[Agent 2: Validation Agent]
-    Agent2 --> Agent3[Agent 3: Task Generation Agent]
-    Agent3 --> Agent4[Agent 4: Patient-Friendly Explanation Agent]
-    Agent2 --> Agent5[Agent 5: Safety / Escalation Agent]
-    Agent1 --> Agent6[Agent 6: Provider Finder Agent]
-    Agent3 --> Timeline[Chronological Care Timeline]
-    Agent2 & Agent5 --> Review[Human Review Center]
-    Timeline & Review & Agent3 --> Dashboard[CareFlow Coordination Dashboard]
+```
+                  ┌─────────────────────────────────────────┐
+                  │        Synthetic Discharge Summary       │
+                  │              (PDF or TXT)               │
+                  └────────────────────┬────────────────────┘
+                                       │
+                                       ▼
+                  ┌─────────────────────────────────────────┐
+                  │       Document Processing (PyMuPDF)     │
+                  └────────────────────┬────────────────────┘
+                                       │
+                                       ▼
+                  ┌─────────────────────────────────────────┐
+                  │  Agent 1: Document Extraction Agent     │
+                  │  (Extracts entities & verbatim sources) │
+                  └────────────────────┬────────────────────┘
+                                       │
+                                       ▼
+                  ┌─────────────────────────────────────────┐
+                  │  Agent 2: Validation & Ambiguity Agent  │
+                  │  (Detects missing dates & conflicts)    │
+                  └────────────────────┬────────────────────┘
+                                       │
+                     ┌─────────────────┴─────────────────┐
+                     ▼                                   ▼
+        ┌─────────────────────────┐         ┌─────────────────────────┐
+        │ Agent 5: Safety /       │         │ Agent 3: Task           │
+        │ Escalation Agent        │         │ Generation Agent        │
+        │ (Medication questions)  │         │ (Creates care tasks)    │
+        └────────────┬────────────┘         └────────────┬────────────┘
+                     │                                   │
+                     ▼                                   ▼
+        ┌─────────────────────────┐         ┌─────────────────────────┐
+        │ Human Review Center     │         │ Agent 4: Explanation    │
+        │ (Clinician in the loop) │         │ Agent (Plain English)   │
+        └─────────────────────────┘         └────────────┬────────────┘
+                                                         │
+                                                         ▼
+                                            ┌─────────────────────────┐
+                                            │ Agent 6: Provider       │
+                                            │ Finder Agent (Synthetic)│
+                                            └─────────────────────────┘
 ```
 
-### The 6 Agents:
-1. **Agent 1 – Document Extraction Agent**
-   - Extracts discharge dates, appointments, tests, referrals, medications (*exact instructions preserved verbatim*), care/wound instructions, and red flag warning signs.
-   - Attaches strict source references (e.g. `Discharge Summary - Page 2 - Follow-up section`).
-2. **Agent 2 – Validation Agent**
-   - Detects missing dates, ambiguous instructions (*"as needed"*, *"sometime next week"*), missing medication duration, or conflicting dates.
-   - **Never fabricates missing dates or instructions**; flags items for Human Review.
-3. **Agent 3 – Task Generation Agent**
-   - Converts clinical orders into prioritized, trackable tasks (`Pending`, `Completed`, `Needs Review`) across Medication, Appointment, Test, Care, and Referral categories.
-4. **Agent 4 – Patient-Friendly Explanation Agent**
-   - Rewrites complex medical terminology into accessible, plain English without modifying clinical meaning or adding unauthorized advice.
-5. **Agent 5 – Safety / Escalation Agent**
-   - Evaluates patient queries and clinical documents against strict healthcare boundaries (stopping/starting medications, dose modifications, acute symptoms).
-   - Enforces the **"Human Review Required"** boundary and blocks automated clinical answers.
-6. **Agent 6 – Provider Finder Agent**
-   - Matches specialty follow-up requirements against synthetic provider directories.
-   - Adds mandatory disclaimer: *"Provider matches are based on synthetic data and do not guarantee availability, suitability, or clinical appropriateness."*
+1. **Agent 1 – Document Extraction Agent**: Extracts appointments, tests, medications, care instructions, and warning signs without hallucinating missing fields.
+2. **Agent 2 – Validation Agent**: Detects missing dates, ambiguous timeframes, and conflicting orders. Flags items as **Needs Review** rather than guessing dates.
+3. **Agent 3 – Task Generation Agent**: Converts instructions into trackable tasks across Medication, Appointment, Test, Referral, and Care categories.
+4. **Agent 4 – Patient-Friendly Explanation Agent**: Rewrites medical terminology into clear plain English while strictly preserving meaning (English only).
+5. **Agent 5 – Safety / Escalation Agent**: Detects clinical concerns, questions on stopping medications, or new symptoms and escalates immediately to human reviewers.
+6. **Agent 6 – Provider Finder Agent**: Matches follow-up requirements with synthetic provider fixtures in Chennai and metro areas with mandatory non-guarantee disclaimers.
 
 ---
 
-## 3. Strict Healthcare Safety Boundaries
+## ⚡ Tech Stack
 
-CareFlow AI is an administrative coordination system, **NOT** a diagnostic or treatment system.
-
-### The AI NEVER:
-- ❌ Diagnoses diseases or conditions
-- ❌ Recommends or initiates medical treatments
-- ❌ Modifies medication dosages
-- ❌ Tells a patient to stop or start a medication
-- ❌ Invents missing instructions or fabricated dates
-- ❌ Gives personalized medical advice
-- ❌ Presents synthetic provider matches as guaranteed
-
----
-
-## 4. Built-in Synthetic Scenarios
-
-The system includes 5 built-in synthetic scenarios accessible with a single click on the **Upload** page:
-
-1. **Scenario 1 – Normal Discharge:**
-   - Standard post-stent recovery with cardiology follow-up, blood tests, and clear medication schedules.
-2. **Scenario 2 – Multiple Follow-ups & Referrals:**
-   - Complex multi-specialty care requiring Cardiology, Endocrinology, and Nephrology referrals.
-3. **Scenario 3 – Ambiguous Instructions:**
-   - Missing follow-up dates and undefined medication durations automatically flagged as **Needs Review**.
-4. **Scenario 4 – Conflicting Instructions:**
-   - Detects contradictory timelines (2-week staple removal order vs. 6-week attending addendum).
-5. **Scenario 5 – Clinically Sensitive Query:**
-   - A patient inquiry regarding forearm bruising and stopping blood thinners triggers Agent 5's safety guardrail for immediate clinical escalation.
+- **Frontend**:
+  - React.js 19
+  - Vite 8
+  - Tailwind CSS v3.4
+  - React Router v7 (`react-router-dom`)
+  - Axios
+  - Lucide React Icons
+  - Recharts
+- **Backend**:
+  - Python 3.11
+  - FastAPI
+  - Pydantic v2
+  - PyMuPDF (`fitz` / `pymupdf`) for high-fidelity PDF text parsing
+  - Uvicorn
+- **Database & Storage**:
+  - PostgreSQL / Supabase DDL schema (`backend/database/schema.sql`)
+  - In-memory & JSON file fallback state for 100% out-of-the-box offline/demo reliability
 
 ---
 
-## 5. Technology Stack
+## 📂 Project Structure
 
-### Frontend
-- **React 19** + **Vite 8**
-- **Tailwind CSS v4** (Modern Healthcare SaaS design palette: `#f8fafc` canvas, `#0284c7` sky accents, `#0d9488` teal)
-- **Lucide React** icons
-- **React Router v7**
-- **Axios**
-
-### Backend
-- **Python 3.14**
-- **FastAPI** + **Uvicorn**
-- **Pydantic v2**
-- **PyMuPDF (`pymupdf`)** for PDF text extraction
-
----
-
-## 6. How to Run Locally
-
-### Start Backend
-```powershell
-# From the project root
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-API Documentation available at: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
-### Start Frontend
-```powershell
-# In a new terminal
-cd frontend
-npm run dev -- --host 127.0.0.1 --port 5173
+d:/Anentra Project/
+├── backend/
+│   ├── main.py                     # FastAPI application & REST endpoints
+│   ├── requirements.txt            # Python dependencies
+│   ├── models/
+│   │   ├── schemas.py              # Pydantic schemas (Patient, Task, Review, Provider, etc.)
+│   │   └── __init__.py
+│   ├── agents/
+│   │   ├── orchestrator.py         # Multi-agent coordination layer & audit logger
+│   │   ├── extraction_agent.py     # Agent 1: Entity extraction with source citations
+│   │   ├── validation_agent.py     # Agent 2: Missing date & ambiguity detection
+│   │   ├── task_generation_agent.py# Agent 3: Actionable task synthesis
+│   │   ├── explanation_agent.py    # Agent 4: Plain English translation
+│   │   ├── safety_escalation_agent.py # Agent 5: Safety boundary enforcement
+│   │   └── provider_agent.py       # Agent 6: Synthetic provider matching
+│   ├── document_processor/
+│   │   └── pdf_parser.py           # PyMuPDF PDF & TXT parser with page tracking
+│   ├── database/
+│   │   ├── db.py                   # Unified database & scenario manager
+│   │   └── schema.sql              # Supabase / PostgreSQL DDL table definitions
+│   └── data/
+│       ├── synthetic_scenarios.py  # 5 Synthetic scenarios & provider directory
+│       └── sample_pdfs/            # Real generated synthetic PDF fixtures
+│
+└── frontend/
+    ├── package.json
+    ├── vite.config.js
+    ├── tailwind.config.js
+    ├── postcss.config.js
+    ├── index.html
+    └── src/
+        ├── main.jsx
+        ├── App.jsx                 # Routing across all 8 modules
+        ├── index.css               # Healthcare styling & design system
+        ├── context/
+        │   └── CareFlowContext.jsx # Global state, drawer toggles, and scenario manager
+        ├── services/
+        │   └── api.js              # Axios client communicating with FastAPI
+        ├── components/
+        │   ├── Sidebar.jsx         # Section 7 navigation & Synthetic Data Mode badge
+        │   ├── TopNav.jsx          # Patient chip, scenario switcher, & alerts
+        │   ├── Layout.jsx          # Responsive shell
+        │   ├── SourceEvidenceDrawer.jsx # Explainability drawer with verbatim text
+        │   ├── ReviewDetailModal.jsx    # Section 16 inspection: Original, AI, Issue
+        │   ├── TaskDetailModal.jsx      # Task detail & completion toggle
+        │   ├── AIProcessingWorkflow.jsx # Section 10 animated 7-step pipeline
+        │   └── Toast.jsx
+        └── pages/
+            ├── DashboardPage.jsx   # Section 8: Summary cards, Next Actions, Timeline
+            ├── UploadSummaryPage.jsx# Section 9: Drag-drop, paste, & 5 demo scenarios
+            ├── DischargeSummaryPage.jsx # Section 11: Side-by-side original vs extracted
+            ├── TasksPage.jsx       # Section 12: Filterable task dashboard
+            ├── TimelinePage.jsx    # Section 13: Vertical chronological care path
+            ├── ProvidersPage.jsx   # Section 14: Care provider finder with disclaimers
+            ├── ReviewCenterPage.jsx# Section 15: Human review queue
+            ├── AIActivityPage.jsx  # Section 17: AI audit trail with timestamps
+            └── SettingsPage.jsx    # Section 23 & 24: Profile & Responsible AI checklist
 ```
-Open web application at: [http://127.0.0.1:5173](http://127.0.0.1:5173)
 
 ---
 
-## 7. Responsible AI Governance
-All synthetic datasets adhere to responsible AI principles:
-- Transparent audit trail on **AI Activity** page.
-- Explainable citations with **View Source** buttons on all extracted instructions.
-- Human-in-the-loop clinical review center for all ambiguous entities.
+## 🚀 Running the Application
+
+### 1. Start the FastAPI Backend
+```bash
+cd "d:\Anentra Project\backend"
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+API Documentation will be available at: `http://127.0.0.1:8000/docs`
+
+### 2. Start the Vite Frontend
+```bash
+cd "d:\Anentra Project\frontend"
+npm run dev
+```
+The application will be accessible at: `http://127.0.0.1:5173/`
+
+---
+
+## 🧪 5 Preloaded Test Scenarios
+
+Accessible via the **Upload Page** or top-bar **Scenario Switcher**:
+1. **Scenario 1 – Normal Discharge Plan**: Complete instructions with Cardiology follow-up (Oct 20), Fasting blood test (Oct 15), Atorvastatin, Aspirin, and Catheter site care.
+2. **Scenario 2 – Multiple Follow-ups**: Complex post-discharge plan with Cardiology, Endocrinology referral, Echo test, and Cardiac Rehab referral.
+3. **Scenario 3 – Ambiguous Instructions**: Cardiology clinic follow-up date unspecified ("as needed") and Clopidogrel duration missing. Demonstrates **Needs Review** escalation.
+4. **Scenario 4 – Conflicting Instructions**: Contradictory return dates (1-week nursing wound note vs 2-week attending surgical order).
+5. **Scenario 5 – Clinically Sensitive Inquiry**: Patient asking whether they should stop taking Clopidogrel or reduce dosage due to minor bleeding. Triggers immediate **Human Review Required** escalation.

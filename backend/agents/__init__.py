@@ -1,1 +1,1 @@
-# CareFlow AI Multi-Agent Orchestration Package
+# CareFlow AI Logical Agents Package

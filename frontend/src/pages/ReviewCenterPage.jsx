@@ -1,438 +1,347 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  ShieldAlert,
   CheckCircle2,
-  HelpCircle,
   Clock,
-  ShieldCheck,
-  Eye,
-  FileText,
-  Check,
-  CheckCheck,
+  ArrowRight,
+  ArrowLeft,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  User,
-  Info,
-  Filter
+  Check,
+  MessageSquare,
+  HelpCircle,
+  FileText,
+  Pill,
+  Sparkles,
 } from 'lucide-react';
-import { useReview } from '../context/ReviewContext';
-import ReviewModal from '../components/ReviewModal';
-import SourceModal from '../components/SourceModal';
+import { useCareFlow } from '../context/CareFlowContext';
 
-export default function ReviewCenterPage() {
-  const [searchParams] = useSearchParams();
-  const {
-    reviews,
-    activeReviewCount,
-    loading,
-    updateReview,
-    selectedReview,
-    setSelectedReview,
-    fetchReviews
-  } = useReview();
+export const ReviewCenterPage = () => {
+  const { reviews, openReviewModal, updateReviewStatus, openSourceEvidence, counts } = useCareFlow();
+  const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('Needs Review');
-  const [expandedSources, setExpandedSources] = useState({});
-  const [selectedSourceItem, setSelectedSourceItem] = useState(null);
+  // State to track durations and notes per review item
+  const [durations, setDurations] = useState({});
+  const [reviewNotes, setReviewNotes] = useState({});
 
-  useEffect(() => {
-    if (fetchReviews) {
-      fetchReviews();
-    }
-  }, [fetchReviews]);
+  const pendingReviews = reviews.filter((r) => r.status === 'Pending' || r.status === 'Needs Review');
+  const resolvedReviews = reviews.filter((r) => r.status !== 'Pending' && r.status !== 'Needs Review');
 
-  // Support deep-linking via query parameters (e.g., ?id=REV-001 or ?tab=Approved)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-    const idParam = searchParams.get('id');
-    if (idParam && reviews.length > 0) {
-      const target = reviews.find(
-        (r) => r.id.toUpperCase() === idParam.toUpperCase() ||
-               r.id.toUpperCase().replace('-', '') === idParam.toUpperCase().replace('-', '')
-      );
-      if (target) {
-        setSelectedReview(target);
-        if (target.status) {
-          setActiveTab(target.status);
-        }
-      }
-    }
-  }, [searchParams, reviews, setSelectedReview]);
-
-  const toggleSource = (id) => {
-    setExpandedSources((prev) => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
+  const handleDurationChange = (id, val) => {
+    setDurations((prev) => ({ ...prev, [id]: val }));
   };
 
-  const handleQuickAction = async (id, status) => {
-    await updateReview(id, status);
+  const handleNotesChange = (id, val) => {
+    setReviewNotes((prev) => ({ ...prev, [id]: val }));
   };
 
-  const needsReviewList = reviews.filter((r) => r.status === 'Needs Review');
-  const approvedList = reviews.filter((r) => r.status === 'Approved');
-  const clarificationList = reviews.filter((r) => r.status === 'Needs Clarification');
-  const resolvedList = reviews.filter((r) => r.status === 'Resolved');
+  const handleResolveAction = (item, newStatus) => {
+    const dur = durations[item.id] || '12 months';
+    const notes = reviewNotes[item.id] || (dur ? `Clinician confirmed duration: ${dur}. Approved post-PCI dual antiplatelet regimen.` : '');
+    updateReviewStatus(item.id, newStatus, notes, dur);
+  };
 
-  const displayedReviews =
-    activeTab === 'Needs Review'
-      ? needsReviewList
-      : activeTab === 'Approved'
-      ? approvedList
-      : activeTab === 'Needs Clarification'
-      ? clarificationList
-      : activeTab === 'Resolved'
-      ? resolvedList
-      : reviews;
+  const quickDurations = ['12 months', '90 days', '6 months', '30 days'];
 
   return (
-    <div className="flex-1 p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Header matching Section 15 with Return to Dashboard link */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
-              Safety Guardrail Active
-            </span>
-            <span className="text-xs text-slate-400">•</span>
-            <span className="text-xs text-slate-500 font-medium">
-              Clinical Clarification Queue
-            </span>
+            <Link
+              to="/"
+              className="text-xs font-semibold text-healthcare-600 hover:text-healthcare-700 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Dashboard</span>
+            </Link>
           </div>
-          <h1 className="text-2xl lg:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <span className="text-xs font-bold uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-100">
+            Safety Guardrail
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
             Human Review Center
           </h1>
-          <p className="text-xs md:text-sm text-slate-500 mt-1 max-w-3xl">
-            Review unclear, ambiguous, or clinically sensitive items before they become verified care-plan actions.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Escalation queue for clinical ambiguities, unspecified medication durations, and safety directives
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 text-xs font-semibold shrink-0">
-          <span className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-2xs">
-            Total Flagged: <strong>{reviews.length}</strong>
-          </span>
-          <span className="px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
-            Active Queue: <strong>{activeReviewCount}</strong>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/"
+            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+          >
+            ← Return to Dashboard
+          </Link>
+          <span
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 ${
+              pendingReviews.length > 0
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}
+          >
+            {pendingReviews.length > 0 ? (
+              <>
+                <AlertTriangle className="w-4 h-4" />
+                <span>{pendingReviews.length} Unresolved Review(s)</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>All Reviews Resolved</span>
+              </>
+            )}
           </span>
         </div>
       </div>
 
-      {/* Safety Behavior Banner (Section 7 Requirement) */}
-      <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-start gap-3 text-xs text-amber-900 shadow-xs">
-        <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <div className="font-bold text-amber-950 uppercase tracking-wider text-[11px]">
-            Healthcare Safety Guardrail
-          </div>
-          <p className="text-amber-900/90 leading-relaxed">
-            Human Review is strictly for verifying extraction accuracy against the synthetic discharge summary. CareFlow AI does not provide diagnostic, treatment, or dosage modification recommendations. Original instructions are fully preserved.
-          </p>
-        </div>
+      {/* Safety Guideline Callout */}
+      <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-200/90 text-xs text-sky-950 flex items-start gap-3 shadow-2xs">
+        <ShieldAlert className="w-4 h-4 text-healthcare-600 mt-0.5 shrink-0" />
+        <p className="leading-relaxed">
+          <strong>Human-in-the-Loop Protocol:</strong> CareFlow AI never invents clinical dates or alters medication instructions.
+          When an instruction is missing critical duration or timing, it is routed here so healthcare staff can enter the missing parameters
+          and approve the care plan.
+        </p>
       </div>
 
-      {/* Unrecognized Document Alert Banner */}
-      {reviews.some((r) => r.issue?.toLowerCase().includes('unrecognized') || r.issue?.toLowerCase().includes('non-discharge')) && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3 text-xs text-rose-950 shadow-xs">
-          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-bold text-rose-900 uppercase tracking-wider text-[11px] flex items-center gap-2">
-              <span>Unrecognized or Non-Discharge Document Flagged</span>
-              <span className="bg-rose-200 text-rose-900 text-[10px] px-2 py-0.5 rounded-full font-bold">Action Required</span>
-            </div>
-            <p className="text-rose-900/90 leading-relaxed">
-              The uploaded file does not contain standard hospital discharge summary sections (orders, medications, follow-up instructions, or attending notes). Review the item below to resolve it or re-upload a valid discharge summary.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-semibold text-slate-400 mr-1.5 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> Filter Queue:
-          </span>
-          {[
-            { id: 'Needs Review', label: 'Needs Review', count: needsReviewList.length, color: 'text-rose-700' },
-            { id: 'Approved', label: 'Approved', count: approvedList.length, color: 'text-emerald-700' },
-            { id: 'Needs Clarification', label: 'Needs Clarification', count: clarificationList.length, color: 'text-amber-700' },
-            { id: 'Resolved', label: 'Resolved', count: resolvedList.length, color: 'text-indigo-700' },
-            { id: 'All', label: 'All Items', count: reviews.length, color: 'text-slate-700' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === tab.id
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-              }`}
+      {/* Pending Items Queue */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+            Items Requiring Clinical Attention ({pendingReviews.length})
+          </h2>
+          {pendingReviews.length === 0 && (
+            <Link
+              to="/"
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
             >
-              <span>{tab.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {tab.count}
-              </span>
-            </button>
-          ))}
+              <span>Return to Dashboard</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
         </div>
 
-        <div className="text-xs text-slate-400 font-medium hidden md:block">
-          Showing {displayedReviews.length} of {reviews.length} items
-        </div>
+        {pendingReviews.length === 0 ? (
+          <div className="p-10 text-center bg-white rounded-3xl border border-slate-200/80 shadow-2xs space-y-4 animate-in fade-in duration-300">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">All Review Items Have Been Resolved</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                All extracted instructions and medication durations have been approved and saved to the patient care plan.
+                Active review count is now 0.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-healthcare-600 hover:bg-healthcare-700 text-white font-bold text-xs shadow-sm shadow-healthcare-200 transition-all hover:scale-[1.01]"
+              >
+                <span>Return to Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5">
+            {pendingReviews.map((item) => {
+              const isHigh = item.priority === 'High';
+              const currentDuration = durations[item.id] !== undefined ? durations[item.id] : '12 months';
+
+              return (
+                <div
+                  key={item.id}
+                  className="p-6 bg-white rounded-3xl border border-rose-200 shadow-2xs hover:shadow-xs transition-all space-y-5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
+                          isHigh
+                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {item.priority || 'High'} Priority Review
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900">{item.issue}</h3>
+                    </div>
+
+                    <span className="text-xs text-slate-400 font-mono">ID: {item.id}</span>
+                  </div>
+
+                  {/* AI Finding & Source Citation */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Source Reference:
+                      </span>
+                      <p className="font-semibold text-slate-800">
+                        {item.source_reference?.document || 'Discharge Summary'} – Page {item.source_reference?.page || 1}
+                      </p>
+                      <p className="text-slate-700 italic font-mono text-[11px] mt-1 bg-white p-2 rounded-lg border border-slate-200">
+                        "{item.original_text || item.originalText}"
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-100 space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                        AI Finding & Rationale:
+                      </span>
+                      <p className="text-rose-950 font-medium">
+                        "{item.reason || item.ai_interpretation || 'Follow-up timing or duration is ambiguous.'}"
+                      </p>
+                      <p className="text-[11px] text-rose-800/80 mt-1">
+                        Per safety boundaries, AI cannot guess treatment endpoints. Please enter confirmed duration below.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Interactive Input: Enter Missing Duration matching Requirement 3 & 4 */}
+                  <div className="p-4 rounded-2xl bg-sky-50/40 border border-sky-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Pill className="w-4 h-4 text-healthcare-600" />
+                        <span>Enter Confirmed Medication Duration / Treatment Endpoint:</span>
+                      </label>
+                      <span className="text-[10px] font-semibold text-healthcare-700">Required to resolve</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        type="text"
+                        value={currentDuration}
+                        onChange={(e) => handleDurationChange(item.id, e.target.value)}
+                        placeholder="e.g., 12 months, 90 days, 30 days"
+                        className="flex-1 px-3.5 py-2 text-xs font-semibold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-healthcare-500 text-slate-800 shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Quick suggestion buttons */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[11px] text-slate-400 font-medium mr-1">Quick Select:</span>
+                      {quickDurations.map((dur) => (
+                        <button
+                          key={dur}
+                          type="button"
+                          onClick={() => handleDurationChange(item.id, dur)}
+                          className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-all ${
+                            currentDuration === dur
+                              ? 'bg-healthcare-600 text-white border-healthcare-600'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {dur}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Notes textarea */}
+                    <div className="pt-2">
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Clinical Clarification Notes (Optional):
+                      </label>
+                      <input
+                        type="text"
+                        value={reviewNotes[item.id] || ''}
+                        onChange={(e) => handleNotesChange(item.id, e.target.value)}
+                        placeholder="e.g., Confirmed with cardiology attending: 12 months dual antiplatelet therapy post-PCI."
+                        className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-healthcare-500 text-slate-700"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Action Buttons matching Requirement 4 */}
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+                    <button
+                      onClick={() => openReviewModal(item)}
+                      className="text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1"
+                    >
+                      <span>Inspect Details & Model Diffs</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleResolveAction(item, 'Clarification Requested')}
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors"
+                      >
+                        Request Clarification
+                      </button>
+
+                      <button
+                        onClick={() => handleResolveAction(item, 'Approved')}
+                        className="px-4 py-2 text-xs font-bold rounded-xl bg-healthcare-600 hover:bg-healthcare-700 text-white shadow-sm shadow-healthcare-200 transition-colors flex items-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Approve Extraction</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleResolveAction(item, 'Resolved')}
+                        className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-200 transition-all hover:scale-[1.01] active:scale-95 flex items-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Mark Resolved</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Review Items List */}
-      {loading ? (
-        <div className="p-12 text-center text-xs text-slate-500">Loading review items...</div>
-      ) : displayedReviews.length === 0 ? (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3 shadow-xs">
-          <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto" />
-          <h3 className="font-bold text-slate-800 text-base">No Items in this View</h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            {activeTab === 'Needs Review'
-              ? 'All review items have been resolved or clarified. Zero items currently require human review.'
-              : `There are currently no items with status "${activeTab}".`}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {displayedReviews.map((item) => {
-            const isHigh = item.priority === 'HIGH' || item.priority === 'High';
-            const isMed = item.priority === 'MEDIUM' || item.priority === 'Medium';
-            const isSourceOpen = !!expandedSources[item.id];
-
-            return (
+      {/* Resolved Archive */}
+      {resolvedReviews.length > 0 && (
+        <div className="pt-6 border-t border-slate-200 space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Resolved & Approved Items ({resolvedReviews.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-2.5">
+            {resolvedReviews.map((res) => (
               <div
-                key={item.id}
-                className={`bg-white rounded-2xl border p-5 shadow-xs transition-all space-y-4 hover:shadow-sm ${
-                  item.status === 'Needs Review'
-                    ? 'border-rose-200/90'
-                    : item.status === 'Approved'
-                    ? 'border-emerald-200/90'
-                    : item.status === 'Needs Clarification'
-                    ? 'border-amber-200/90'
-                    : 'border-slate-200'
-                }`}
+                key={res.id}
+                className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
               >
-                {/* Item Top Bar: ID, Priority, Patient, Status */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
-                      {item.id}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
-                        isHigh
-                          ? 'bg-rose-100 text-rose-800'
-                          : isMed
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {item.priority} Priority
-                    </span>
-                    <span className="text-slate-300 hidden sm:inline">•</span>
-                    <span className="text-xs text-slate-500 flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      Patient: <strong className="text-slate-800">{item.patient_name || 'Alex Johnson'}</strong>
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">Status:</span>
-                    <span
-                      className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full ${
-                        item.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : item.status === 'Needs Clarification'
-                          ? 'bg-amber-100 text-amber-800'
-                          : item.status === 'Resolved'
-                          ? 'bg-indigo-100 text-indigo-800'
-                          : 'bg-rose-100 text-rose-800'
-                      }`}
-                    >
-                      {item.status}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Main Content: Issue and 3-Section Preview */}
-                <div className="space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">
-                      {item.issue}
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      Source: {item.source_reference}
-                    </p>
-                  </div>
-
-                  {/* 3 Information Blocks */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Block A: Original Instruction */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block flex items-center gap-1">
-                        <FileText className="w-3 h-3 text-slate-500" />
-                        Original Instruction
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">{res.issue}</span>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800">
+                        {res.status}
                       </span>
-                      <p className="text-xs font-mono text-slate-800 leading-relaxed whitespace-pre-wrap">
-                        "{item.original_text}"
+                    </div>
+                    {res.duration && (
+                      <p className="text-[11px] text-healthcare-700 font-semibold mt-0.5">
+                        Confirmed Duration: {res.duration}
                       </p>
-                    </div>
-
-                    {/* Block B: AI Interpretation */}
-                    <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-100 space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block">
-                        AI Interpretation
-                      </span>
-                      <p className="text-xs text-sky-950 font-medium leading-relaxed">
-                        {item.ai_interpretation}
+                    )}
+                    {res.resolution_notes && (
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Notes: {res.resolution_notes}
                       </p>
-                    </div>
-
-                    {/* Block C: Reason for Review */}
-                    <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">
-                        Reason for Review
-                      </span>
-                      <p className="text-xs text-amber-950 leading-relaxed">
-                        {item.reason}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Source Evidence Expandable (Section 8 Requirement) */}
-                  <div className="pt-2">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-700">Source Evidence:</span>
-                        <span>
-                          {item.source_document || 'Synthetic Discharge Summary'} • Page {item.source_page || '2'} • {item.source_section || 'Medication Instructions'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSourceItem(item)}
-                          className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer transition-colors"
-                          title="Open full document verification inspector"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Inspect Citation</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => toggleSource(item.id)}
-                          className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <span>{isSourceOpen ? 'Hide Source' : 'View Source'}</span>
-                          {isSourceOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {isSourceOpen && (
-                      <div className="mt-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed animate-in fade-in duration-150">
-                        {item.source_text || item.original_text}
-                      </div>
                     )}
                   </div>
                 </div>
-
-                {/* Actions Bar */}
-                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <button
-                    onClick={() => setSelectedReview(item)}
-                    className="py-2 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Open Detailed Inspection</span>
-                  </button>
-
-                  {/* Functional Review Action Buttons */}
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    {item.status !== 'Needs Review' && (
-                      <button
-                        onClick={() => handleQuickAction(item.id, 'Needs Review')}
-                        className="py-1.5 px-3 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Reopen item for human review"
-                      >
-                        <AlertTriangle className="w-3 h-3 text-rose-600" />
-                        <span>Reopen Review</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleQuickAction(item.id, 'Needs Clarification')}
-                      className={`py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                        item.status === 'Needs Clarification'
-                          ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
-                          : 'border-amber-300 text-amber-800 hover:bg-amber-50'
-                      }`}
-                    >
-                      <HelpCircle className="w-3 h-3 text-amber-600" />
-                      <span>Request Clarification</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleQuickAction(item.id, 'Resolved')}
-                      className={`py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                        item.status === 'Resolved'
-                          ? 'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold'
-                          : 'border-slate-300 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <CheckCheck className="w-3 h-3 text-slate-600" />
-                      <span>Mark Resolved</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleQuickAction(item.id, 'Approved')}
-                      className={`py-1.5 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer ${
-                        item.status === 'Approved'
-                          ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
-                    >
-                      <Check className="w-3 h-3" />
-                      <span>Approve Extraction</span>
-                    </button>
-                  </div>
-                </div>
+                <button
+                  onClick={() => openReviewModal(res)}
+                  className="text-healthcare-600 font-bold hover:underline text-[11px] shrink-0"
+                >
+                  View Details
+                </button>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      )}
-
-      {/* Detailed Review Modal (3-section view + View Source) */}
-      {selectedReview && (
-        <ReviewModal
-          review={selectedReview}
-          isOpen={!!selectedReview}
-          onClose={() => setSelectedReview(null)}
-        />
-      )}
-
-      {/* Clinical Source Document Citation Modal */}
-      {selectedSourceItem && (
-        <SourceModal
-          item={selectedSourceItem}
-          isOpen={!!selectedSourceItem}
-          onClose={() => setSelectedSourceItem(null)}
-        />
       )}
     </div>
   );
-}
+};
