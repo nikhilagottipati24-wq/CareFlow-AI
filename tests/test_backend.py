@@ -132,3 +132,129 @@ def test_patient_update():
     # Reset
     client.put("/api/patient", json={"name": "Alex Johnson", "age": 52})
 
+def test_upload_valid_synthetic_pdf():
+    import pymupdf
+    # Create valid synthetic PDF with selectable text
+    doc = pymupdf.open()
+    page1 = doc.new_page()
+    page1.insert_text((50, 50), "DISCHARGE SUMMARY - SYNTHETIC GENERAL HOSPITAL\nPatient: John Smith\nMedications: Metoprolol 25mg PO daily")
+    page2 = doc.new_page()
+    page2.insert_text((50, 50), "FOLLOW-UP APPOINTMENTS:\nCardiology clinic in 2 weeks with Dr. Adams.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("discharge_summary.pdf", pdf_bytes, "application/pdf")}
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["filename"] == "discharge_summary.pdf"
+    assert data["page_count"] == 2
+    assert "DISCHARGE SUMMARY" in data["full_text"]
+    assert "Metoprolol" in data["full_text"]
+    assert "Cardiology clinic" in data["full_text"]
+    assert data["character_count"] > 50
+    assert len(data["pages"]) == 2
+    assert data["pages"][0]["has_text"] is True
+
+def test_upload_valid_txt():
+    txt_content = "DISCHARGE SUMMARY\nPatient: Jane Doe\nMedications: Lisinopril 10mg once daily\nFollow-up: Primary Care in 10 days."
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("discharge_note.txt", txt_content.encode("utf-8"), "text/plain")}
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["filename"] == "discharge_note.txt"
+    assert "Jane Doe" in data["full_text"]
+    assert data["character_count"] == len(txt_content)
+
+def test_upload_empty_file():
+    # Empty PDF / file rejection
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("empty.pdf", b"", "application/pdf")}
+    )
+    assert res.status_code == 400
+    assert "empty" in res.json()["detail"].lower()
+
+def test_upload_unsupported_file():
+    # Unsupported file extension / type
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("report.exe", b"binarycontent", "application/octet-stream")}
+    )
+    assert res.status_code == 415
+    assert "unsupported" in res.json()["detail"].lower()
+
+def test_upload_invalid_corrupted_pdf():
+    # Invalid corrupted PDF bytes
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("corrupted.pdf", b"not-a-valid-pdf-stream", "application/pdf")}
+    )
+    assert res.status_code == 400
+    assert "invalid" in res.json()["detail"].lower() or "corrupted" in res.json()["detail"].lower()
+
+def test_upload_pdf_no_extractable_text():
+    import pymupdf
+    # Create blank PDF without text (simulating image-only scanned document)
+    doc = pymupdf.open()
+    doc.new_page() # blank page
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("scanned_blank.pdf", pdf_bytes, "application/pdf")}
+    )
+    assert res.status_code == 400
+    assert "no extractable text" in res.json()["detail"].lower()
+    assert "ocr" in res.json()["detail"].lower()
+
+def test_complete_flow_upload_and_analyze():
+    db_store.load_scenario("scenario-1")
+    initial_task_count = len(db_store.tasks)
+
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page()
+    summary_text = (
+        "DISCHARGE SUMMARY\n"
+        "Patient: Robert Evans\n"
+        "Medications:\n"
+        "- Amlodipine 5mg PO daily\n"
+        "Follow-up Appointments:\n"
+        "- Nephrology clinic in 14 days\n"
+        "Diagnostic Tests:\n"
+        "- Comprehensive Metabolic Panel in 7 days\n"
+        "Warning Signs:\n"
+        "- Seek immediate medical attention if severe headache occurs\n"
+    )
+    page.insert_text((50, 50), summary_text)
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    # Step 1: Upload and extract text via PyMuPDF
+    upload_res = client.post(
+        "/api/discharge/upload",
+        files={"file": ("robert_discharge.pdf", pdf_bytes, "application/pdf")}
+    )
+    assert upload_res.status_code == 200
+    extracted_text = upload_res.json()["full_text"]
+    assert "Amlodipine" in extracted_text
+
+    # Step 2: Separate AI Analysis triggered by user
+    analyze_res = client.post(
+        "/api/discharge/analyze",
+        json={"raw_text": extracted_text, "patient_id": "test-patient-001"}
+    )
+    assert analyze_res.status_code == 200
+    analyze_data = analyze_res.json()
+    assert len(analyze_data["extracted"]["medications"]) >= 1
+    assert len(analyze_data["tasks"]) >= 1
+    # Tasks added to store
+    assert len(db_store.tasks) > initial_task_count
+
+

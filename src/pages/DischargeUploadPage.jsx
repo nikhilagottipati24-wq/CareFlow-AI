@@ -12,7 +12,9 @@ import {
   Calendar,
   Pill,
   Activity,
-  HeartHandshake
+  HeartHandshake,
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { CareFlowAPI } from '../services/api';
 import { useCareFlow } from '../context/CareFlowContext';
@@ -50,6 +52,10 @@ export const DischargeUploadPage = () => {
 
   const [rawText, setRawText] = useState(SAMPLE_SUMMARY);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadMeta, setUploadMeta] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -65,32 +71,77 @@ export const DischargeUploadPage = () => {
     'Building care timeline'
   ];
 
-  const handleFileChange = async (e) => {
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  const uploadFile = async (fileToUpload) => {
+    if (!fileToUpload) return;
+    setUploading(true);
+    setUploadProgress(0);
+    setErrorMessage(null);
+    setUploadSuccess(false);
+    setUploadMeta(null);
+
+    const formData = new FormData();
+    formData.append('file', fileToUpload, fileToUpload.name);
+
+    try {
+      const res = await CareFlowAPI.uploadDischargeFile(formData, (progressEvent) => {
+        if (progressEvent.total) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
+        }
+      });
+
+      if (res?.data?.full_text) {
+        setRawText(res.data.full_text);
+        setUploadMeta(res.data);
+        setUploadSuccess(true);
+        setUploadProgress(100);
+        showToast(
+          `${fileToUpload.name.endsWith('.pdf') ? 'PDF' : 'Document'} parsed successfully via PyMuPDF (${res.data.character_count} chars)`
+        );
+      } else {
+        throw new Error('No text returned from document extraction.');
+      }
+    } catch (err) {
+      let msg =
+        err?.response?.data?.detail ||
+        err?.friendlyMessage ||
+        err?.message ||
+        'Upload and extraction failed.';
+      if (typeof msg === 'object') msg = JSON.stringify(msg);
+      setErrorMessage(`Document upload / parsing failed: ${msg}`);
+      setUploadSuccess(false);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setSelectedFile(file);
-    setErrorMessage(null);
+    uploadFile(file);
+  };
 
-    // If text file, read directly
-    if (file.name.endsWith('.txt')) {
-      const text = await file.text();
-      setRawText(text);
-      showToast(`Loaded ${file.name}`);
-    } else if (file.name.endsWith('.pdf')) {
-      // Upload to PyMuPDF backend extraction endpoint
-      const formData = new FormData();
-      formData.append('file', file);
-      try {
-        const res = await CareFlowAPI.uploadDischargeFile(formData);
-        if (res?.data?.full_text) {
-          setRawText(res.data.full_text);
-          showToast(`PDF parsed successfully via PyMuPDF (${res.data.character_count} chars)`);
-        }
-      } catch (err) {
-        setErrorMessage(`PDF parsing failed: ${err?.response?.data?.detail || err.message}`);
-      }
+  const handleRetryUpload = () => {
+    if (selectedFile) {
+      uploadFile(selectedFile);
     }
+  };
+
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    setUploadSuccess(false);
+    setUploadMeta(null);
+    setErrorMessage(null);
+    setUploadProgress(0);
   };
 
   const handleAnalyze = async () => {
@@ -133,9 +184,20 @@ export const DischargeUploadPage = () => {
       </div>
 
       {errorMessage && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{errorMessage}</span>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          {selectedFile && !uploading && (
+            <button
+              onClick={handleRetryUpload}
+              className="flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white rounded text-[11px] font-semibold hover:bg-red-700 transition shrink-0"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Retry</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -152,21 +214,119 @@ export const DischargeUploadPage = () => {
               Supports hospital discharge PDFs (PyMuPDF OCR engine) or plain text TXT files.
             </p>
 
-            <label className="mt-4 flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 transition-all text-center">
-              <FileText className="w-10 h-10 text-slate-400 mb-2" />
-              <span className="text-xs font-bold text-slate-800">
-                {selectedFile ? selectedFile.name : 'Drag and drop PDF / TXT here'}
-              </span>
-              <span className="text-[11px] text-slate-500 mt-1">
-                or click to browse your computer
-              </span>
-              <input
-                type="file"
-                accept=".pdf,.txt"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
+            {!selectedFile ? (
+              <label className="mt-4 flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 transition-all text-center">
+                <FileText className="w-10 h-10 text-slate-400 mb-2" />
+                <span className="text-xs font-bold text-slate-800">
+                  Drag and drop PDF / TXT here
+                </span>
+                <span className="text-[11px] text-slate-500 mt-1">
+                  or click to browse your computer
+                </span>
+                <input
+                  type="file"
+                  accept=".pdf,.txt"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <div className="mt-4 p-4 border border-slate-200 rounded-xl bg-slate-50/80 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate">
+                        {selectedFile.name}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatFileSize(selectedFile.size)}
+                        {uploadMeta?.page_count ? ` • ${uploadMeta.page_count} page(s)` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {!uploading && (
+                    <button
+                      onClick={handleClearFile}
+                      className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200 transition"
+                      title="Clear file"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Upload Progress Bar */}
+                {uploading && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-blue-700 font-medium flex items-center gap-1.5">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Uploading & parsing with PyMuPDF...
+                      </span>
+                      <span className="text-blue-700 font-bold">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${Math.max(5, uploadProgress)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Success Status */}
+                {uploadSuccess && !uploading && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Document uploaded & parsed successfully</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700">
+                      PyMuPDF extracted {uploadMeta?.character_count?.toLocaleString()} characters
+                      {uploadMeta?.page_count ? ` across ${uploadMeta.page_count} page(s)` : ''}.
+                    </p>
+                    {uploadMeta?.text_preview && (
+                      <div className="mt-2 p-2 bg-white/80 rounded border border-emerald-200/60 font-mono text-[10px] text-slate-700 line-clamp-2">
+                        {uploadMeta.text_preview}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Retry Button if Error */}
+                {errorMessage && !uploading && (
+                  <div className="pt-1">
+                    <button
+                      onClick={handleRetryUpload}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry Upload</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Switch File Link */}
+                {!uploading && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
+                    <label className="text-[11px] text-blue-600 font-semibold cursor-pointer hover:underline">
+                      Choose a different file
+                      <input
+                        type="file"
+                        accept=".pdf,.txt"
+                        onChange={handleFileChange}
+                        disabled={uploading}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600 space-y-1">
@@ -190,21 +350,23 @@ export const DischargeUploadPage = () => {
               </h2>
               <button
                 onClick={() => setRawText(SAMPLE_SUMMARY)}
-                className="text-xs text-blue-600 font-semibold hover:underline"
+                disabled={uploading || analyzing}
+                className="text-xs text-blue-600 font-semibold hover:underline disabled:opacity-50"
               >
                 Load Sample
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-3">
-              Review or paste discharge text prior to agent execution.
+              Review or edit extracted discharge text before executing AI agents.
             </p>
 
             <textarea
               rows={11}
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              className="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-              placeholder="Paste discharge note contents here..."
+              disabled={uploading}
+              className="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden disabled:opacity-60"
+              placeholder="Paste discharge note contents here or upload a document..."
             />
           </div>
 
@@ -214,8 +376,8 @@ export const DischargeUploadPage = () => {
             </span>
             <button
               onClick={handleAnalyze}
-              disabled={analyzing || !rawText.trim()}
-              className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition shadow-2xs disabled:opacity-50"
+              disabled={uploading || analyzing || !rawText.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition shadow-2xs disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               <Sparkles className="w-4 h-4" />
               <span>{analyzing ? 'Analyzing Summary...' : 'Analyze Summary'}</span>

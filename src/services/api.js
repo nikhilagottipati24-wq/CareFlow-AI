@@ -46,8 +46,9 @@ export const CareFlowAPI = {
   getProviders: (params = {}) => api.get('/providers', { params }),
 
   // Discharge & AI Pipeline
-  uploadDischargeFile: (formData) => api.post('/discharge/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+  uploadDischargeFile: (formData, onUploadProgress) => api.post('/discharge/upload', formData, {
+    headers: { 'Content-Type': undefined },
+    onUploadProgress,
   }),
   analyzeDischargeText: (raw_text, patient_id) => api.post('/discharge/analyze', { raw_text, patient_id }),
   getDischargeDoc: (id) => api.get(`/discharge/${id}`),
@@ -56,5 +57,15 @@ export const CareFlowAPI = {
   switchScenario: (scenarioId) => api.post(`/scenarios/${scenarioId}/switch`),
   getActivityLogs: () => api.get('/activity'),
 };
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 502) {
+      error.message = 'Backend server is unavailable (HTTP 502 Bad Gateway). Ensure FastAPI is running on port 8000.';
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

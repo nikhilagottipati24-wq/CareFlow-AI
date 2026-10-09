@@ -1,13 +1,17 @@
 import io
 import csv
 import uuid
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+import pymupdf
 import pymupdf as fitz
+
+logger = logging.getLogger("careflow.upload")
 
 from backend.app.database.store import db_store
 from backend.app.schemas.models import (
@@ -73,31 +77,143 @@ def update_patient(payload: PatientUpdate):
 
 # --- DISCHARGE UPLOAD & ANALYSIS ---
 
+MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB limit
+ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "application/octet-stream",
+    "text/x-log"
+}
+
 @app.post("/api/discharge/upload")
 async def upload_discharge_summary(file: UploadFile = File(...)):
-    filename = file.filename or "unknown.txt"
-    content = await file.read()
-    extracted_text = ""
+    if not file or not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No file provided. Please select a valid PDF or TXT discharge document."
+        )
+
+    filename = file.filename.strip()
+    ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file format '{ext or 'unknown'}'. Please upload a PDF (.pdf) or plain text (.txt) document."
+        )
+
+    content_type = (file.content_type or "").lower()
+    if content_type and content_type not in ALLOWED_CONTENT_TYPES and not content_type.startswith("text/"):
+        if any(unsupported in content_type for unsupported in ["image/", "audio/", "video/", "application/zip", "application/x-"]):
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported media type '{content_type}'. Please upload a valid PDF (.pdf) or text (.txt) document."
+            )
 
     try:
-        if filename.lower().endswith(".pdf"):
-            # Use PyMuPDF (fitz)
-            doc = fitz.open(stream=content, filetype="pdf")
-            text_parts = []
-            for page in doc:
-                text_parts.append(page.get_text())
-            extracted_text = "\n".join(text_parts)
-            doc.close()
-        else:
-            extracted_text = content.decode("utf-8", errors="replace")
+        content = await file.read()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error extracting text from document: {str(e)}")
+        logger.error(f"Failed to read uploaded file: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to read the uploaded file. Please try again."
+        )
+
+    if not content or len(content) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty (0 bytes). Please upload a document with clinical content."
+        )
+
+    if len(content) > MAX_FILE_SIZE:
+        size_mb = round(len(content) / (1024 * 1024), 2)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size exceeds the 15MB limit (received {size_mb}MB). Please upload a smaller document."
+        )
+
+    extracted_text = ""
+    pages_info = []
+
+    if ext == ".pdf":
+        doc = None
+        try:
+            doc = pymupdf.open(stream=content, filetype="pdf")
+        except Exception as e:
+            logger.warning(f"PyMuPDF failed to open file stream: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or unreadable PDF document. Please verify the file is not corrupted."
+            )
+
+        try:
+            if doc.is_encrypted or doc.needs_pass:
+                raise HTTPException(
+                    status_code=400,
+                    detail="The uploaded PDF is encrypted or password-protected. Please provide an unencrypted document."
+                )
+
+            if len(doc) == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="The uploaded PDF document contains no pages."
+                )
+
+            text_parts = []
+            for page_idx, page in enumerate(doc):
+                page_text = page.get_text() or ""
+                text_parts.append(page_text)
+                pages_info.append({
+                    "page_number": page_idx + 1,
+                    "character_count": len(page_text),
+                    "has_text": bool(page_text.strip()),
+                    "preview": page_text.strip()[:150]
+                })
+
+            extracted_text = "\n\n".join(text_parts).strip()
+
+            if not extracted_text:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No extractable text found in PDF. This document may be a scanned image requiring OCR, or is empty."
+                )
+        finally:
+            if doc is not None:
+                doc.close()
+
+    elif ext == ".txt":
+        try:
+            extracted_text = content.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            try:
+                extracted_text = content.decode("latin-1").strip()
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unable to decode text document. Please ensure it is saved in UTF-8 encoding."
+                )
+
+        if not extracted_text:
+            raise HTTPException(
+                status_code=400,
+                detail="The uploaded text file is empty or contains only whitespace."
+            )
+
+        pages_info.append({
+            "page_number": 1,
+            "character_count": len(extracted_text),
+            "has_text": True,
+            "preview": extracted_text[:150]
+        })
 
     doc_id = f"doc-{uuid.uuid4().hex[:8]}"
     db_store.discharge_documents.append({
         "id": doc_id,
         "filename": filename,
         "text": extracted_text,
+        "page_count": len(pages_info),
+        "file_size": len(content),
         "created_at": datetime.now().isoformat() + "Z"
     })
 
@@ -105,7 +221,7 @@ async def upload_discharge_summary(file: UploadFile = File(...)):
     db_store.ai_activity_logs.append({
         "id": f"log-{uuid.uuid4().hex[:8]}",
         "event_type": "Document uploaded",
-        "description": f"File '{filename}' ({len(extracted_text)} characters) uploaded and parsed with PyMuPDF.",
+        "description": f"File '{filename}' ({len(extracted_text)} characters, {len(pages_info)} pages) uploaded and parsed with PyMuPDF.",
         "reference": doc_id,
         "agent": "Document Extraction Agent",
         "timestamp": datetime.now().isoformat() + "Z"
@@ -114,6 +230,9 @@ async def upload_discharge_summary(file: UploadFile = File(...)):
     return {
         "document_id": doc_id,
         "filename": filename,
+        "file_size": len(content),
+        "page_count": len(pages_info),
+        "pages": pages_info,
         "character_count": len(extracted_text),
         "text_preview": extracted_text[:500],
         "full_text": extracted_text
